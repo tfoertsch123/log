@@ -1092,6 +1092,63 @@ func TestDebg5(t *testing.T) {
 	}()
 }
 
+func TestClosed(t *testing.T) {
+	// mocking now()
+	oldNow := _now
+	defer func(){_now = oldNow}()
+	_now = func() time.Time {
+		return time.Date(1966, 4, 28, 9, 2, 5, 987654321, time.UTC)
+	}
+
+	var b strings.Builder
+	// avoid using SetOutput() because it prints to the old output
+	oldOut := Root().out
+	defer func(){Root().out = oldOut}()
+	Root().out = &b
+
+	defer Root().Close()		// reinit
+
+	kid := NewK(WithTopic(`KID`))
+	NewC(WithTopic(`CUR`))
+	kid.Notice(`kid`)
+	Notice(`current`)
+	Root().Notice(`root`)
+
+	Root().Close()
+
+	Root().out = &b
+
+	kid.Notice(`kid`)
+	Notice(`current2`)
+	Root().Notice(`root2`)
+	kid.Noticef(`kid-f`)
+	Noticef(`current2-f`)
+	Root().Noticef(`root2-f`)
+	kid.Noticel(`kid-l`)
+	Noticel(`current2-l`)
+	Root().Noticel(`root2-l`)
+
+	exp := ("1966-04-28 09:02:05.987654 NOTICE [KID] kid\n"+
+			"1966-04-28 09:02:05.987654 NOTICE [CUR] current\n"+
+			"1966-04-28 09:02:05.987654 NOTICE root\n"+
+			// here the root logger was closed
+			// so, the kid should not log anything.
+			// the root should still work
+			// and the current logger should be the same as root
+			// but it now does not have a topic.
+			"1966-04-28 09:02:05.987654 NOTICE current2\n"+
+			"1966-04-28 09:02:05.987654 NOTICE root2\n"+
+			"1966-04-28 09:02:05.987654 NOTICE current2-f\n"+
+			"1966-04-28 09:02:05.987654 NOTICE root2-f\n"+
+			"1966-04-28 09:02:05.987654 NOTICE current2-l\n"+
+			"1966-04-28 09:02:05.987654 NOTICE root2-l\n")
+
+	if b.String() != exp {
+		t.Errorf(`got %v`, b.String())
+	}
+	b.Reset()
+}
+
 // Local Variables:
 // tab-width: 4
 // End:

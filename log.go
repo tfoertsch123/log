@@ -320,6 +320,7 @@ func (l *Logger) _close() *Logger {
 		l.topic = ``
 		l.minloc = DEBUG
 		l.nlocdir = -1
+		l.multiln = false
 		return l
 	} else {
 		l.prev = l					// mark as closed except for root
@@ -331,6 +332,9 @@ func (l *Logger) _close() *Logger {
 // After closing, the logger and its subtree are marked as closed and
 // cannot be used. The returned pointer is the previous parent (or nil
 // for the root).
+// Once a logger has been closed, it will not send any messages anymore.
+// The root logger cannot be closed. If closed, it will be reinitialized
+// with the default values.
 func (l *Logger) Close() *Logger {
 	prev := l._close()
 	if prev != nil {
@@ -609,6 +613,7 @@ func caller(ncomp int) string {
 // lines and each line is prefixed as if it was a log message on its own.
 func (l *Logger) Log(lvl Level, m string) {
 	l.mu.Lock(); defer l.mu.Unlock()
+	if l == l.prev {return}		// logger is closed
 	if lvl <= l.level {
 		clr := ``
 		if lvl >= l.minloc {clr = caller(l.nlocdir)}
@@ -625,6 +630,7 @@ func Log(lvl Level, m string) {L().Log(lvl, m)}
 // Logf outputs a formatted message at the given level.
 func (l *Logger) Logf(lvl Level, f string, p ...interface{}) {
 	l.mu.Lock(); defer l.mu.Unlock()
+	if l == l.prev {return}		// logger is closed
 	if lvl <= l.level {
 		clr := ``
 		if lvl >= l.minloc {clr = caller(l.nlocdir)}
@@ -642,6 +648,7 @@ func Logf(lvl Level, f string, p ...interface{}) {L().Logf(lvl, f, p...)}
 // are called to obtain their value.
 func (l *Logger) Logl(lvl Level, f string, p ...interface{}) {
 	l.mu.Lock(); defer l.mu.Unlock()
+	if l == l.prev {return}		// logger is closed
 	if lvl <= l.level {
 		for i, v := range p {
 			if fn, ok := v.(func() interface{}); ok {
