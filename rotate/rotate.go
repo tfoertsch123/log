@@ -30,8 +30,8 @@ type ErrorHnd func(*Rotate, error)()
 type Rotate struct {
 	wmu         sync.Mutex		// protects write
 	rmu         sync.Mutex		// protects rotation
-	rot         int64			// -1 if no rotations are supposed to be done
-	                            // otherwise the number of rotations so far
+	rot         int64			// number of rotations so far
+	                            // or -1 if not rotating
 	maxSize     int64
 	maxVersions uint
 	errorHnd    ErrorHnd
@@ -44,48 +44,48 @@ type Rotate struct {
 type descr struct {
 	fn  string
 	ms  int64
-	mv  uint
 	rot int64
-	fh  *os.File
+	mv  uint
 	hnd ErrorHnd
+	append bool
 }
 
 // Opt is a function type used to pass information to New().
 type Opt func(*descr)
 
 func WithFileName(f string) Opt {return func(x *descr) {x.fn = f}}
-func WithMaxSize(f int64) Opt {return func(x *descr) {x.rot, x.ms = 0, f}}
+func WithMaxSize(f int64) Opt {return func(x *descr) {x.ms, x.rot = f, 0}}
 func WithNBackups(f uint) Opt {return func(x *descr) {x.mv = f}}
-func WithFile(f *os.File) Opt {return func(x *descr) {x.fh = f}}
 func WithErrorHandler(f ErrorHnd) Opt {return func(x *descr) {x.hnd = f}}
+func WithInitialAppend(f bool) Opt {return func(x *descr) {x.append = f}}
 
 func New(_opts ...Opt) (*Rotate, error) {
-	d := &descr{rot: -1, mv: 1}
+	d := &descr{mv: 1, rot: -1}
 	for _, o := range _opts {o(d)}
 
 	r := &Rotate{
 		maxSize:     d.ms,
 		maxVersions: d.mv,
-		rot:         d.rot,
 		errorHnd:    d.hnd,
+		rot:         d.rot,
 	}
-	if r.rot >= 0 {
-		r.dir, r.fn = filepath.Split(d.fn)
+	r.dir, r.fn = filepath.Split(d.fn)
 
+	if d.append || r.maxSize <= 0 {
+		// no O_EXCL - we are good if the file already exists
+		// no O_TRUNC - if it exists we just append (only if d.append)
+		flags := os.O_CREATE|os.O_WRONLY|os.O_APPEND
+		if !d.append {flags |= os.O_TRUNC}
+		f, err := os.OpenFile(d.fn, flags, 0600)
+		if err != nil {return nil, err}
+		r.fh = f
+		// lseek cannot return an error here
+		r.cur_sz, _ = f.Seek(0, 2)
+	} else {
 		// Normally doRotateSize() should be protected by rmu. But
 		// this is the first time and no other thread knows about it
 		// yet. So, we don't need the lock.
 		if err := r.doRotate(); err != nil {return nil, err}
-	} else {
-		// We don't have anything to rotate ever.
-		r.fn, r.fh = d.fn, d.fh
-		if r.fh == nil {
-			f, err := os.OpenFile(
-				r.fn, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600,
-			)
-			if err != nil {return nil, err}
-			r.fh = f
-		}
 	}
 
 	return r, nil

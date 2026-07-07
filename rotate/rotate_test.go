@@ -32,9 +32,17 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-func TestNewNoRotation(t *testing.T) {
+func TestNewNoRotationNoAppend(t *testing.T) {
 	dir := setup(t)
 	fn := filepath.Join(dir, "test.log")
+
+	if f, err := os.Create(fn); err != nil {
+		t.Fatal(err)
+	} else {
+		f.Write([]byte("to be overwritten"))
+		f.Close()
+	}
+
 	r, err := New(WithFileName(fn))
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +73,62 @@ func TestNewNoRotation(t *testing.T) {
 
 	if r.Rotations() != -1 {
 		t.Errorf("number of rotations should be -1")
+	}
+}
+
+func TestNewRotationWithAppend(t *testing.T) {
+	dir := setup(t)
+	fn := filepath.Join(dir, "test.log")
+
+	if f, err := os.Create(fn); err != nil {
+		t.Fatal(err)
+	} else {
+		f.Write([]byte("to be kept"))
+		f.Close()
+	}
+
+	r, err := New(WithFileName(fn), WithMaxSize(10), WithInitialAppend(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.File().Close()
+
+	// Check file created
+	if !fileExists(fn) {
+		t.Error("file was not created")
+	}
+	if r.Name() != fn {
+		t.Errorf("Name() = %q, want %q", r.Name(), fn)
+	}
+
+	if r.Rotations() != 0 {
+		t.Errorf("number of rotations should be 0")
+	}
+
+	// Write something
+	n, err := r.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Errorf("wrote %d bytes, want 5", n)
+	}
+
+	// After rotation the main file should contain the overflow ("abc")
+	// but we need to give the async rotate a moment to complete
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify content
+	if got := readFile(t, fn + `~`); got != "to be kepthello" {
+		t.Errorf("content = %q, want %q", got, "to be kepthello")
+	}
+
+	if got := readFile(t, fn); got != "" {
+		t.Errorf("rotated file should be empty, got %q", got)
+	}
+
+	if r.Rotations() != 1 {
+		t.Errorf("number of rotations should be 1")
 	}
 }
 
@@ -364,23 +428,22 @@ func TestFirstRotateFails(t *testing.T) {
 	}
 }
 
-func TestErrorRoFile(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("skipping test as root")
+func TestErrorFullFile(t *testing.T) {
+	// Check if /dev/full exists; skip otherwise
+	if _, err := os.Stat("/dev/full"); os.IsNotExist(err) {
+		t.Skip("/dev/full not available on this system")
 	}
+
 	dir := setup(t)
-	// Create a read-only file
-	roFile := filepath.Join(dir, "readonly.log")
-	f, err := os.Create(roFile)
-	if err != nil {
-		t.Fatal(err)
+
+	// Create a symlink to /dev/full in a temporary directory
+	fullFile := filepath.Join(dir, "readonly.log")
+	if err := os.Symlink("/dev/full", fullFile); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
 	}
-	f.Close()
-	os.Chmod(roFile, 0444) // read-only
-	f, err = os.Open(roFile)
 
 	// Try to open with Write access – should fail
-	r, err := New(WithFileName(roFile), WithFile(f))
+	r, err := New(WithFileName(fullFile))
 	if err != nil {
 		t.Fatal(err)
 	}
