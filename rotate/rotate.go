@@ -14,6 +14,33 @@
    limitations under the License.
  */
 
+// Package rotate implements a size-based log file rotator. It writes to a file
+// and automatically rotates (renames) it when the total written size exceeds
+// a configurable threshold. Backups are kept with a versioning scheme:
+//   - The main file:       <filename>
+//   - First backup:        <filename>~
+//   - Second backup:       <filename>~01
+//   - Third backup:        <filename>~02
+//   - etc.
+//
+// Usage:
+//   r, err := rotate.New(
+//       rotate.WithFileName("/var/log/app.log"),
+//       rotate.WithMaxSize(10*1024*1024),  // 10 MB
+//       rotate.WithNBackups(5),
+//       rotate.WithErrorHandler(func(r *rotate.Rotate, err error) {
+//           log.Printf("rotation error: %v", err)
+//       }),
+//   )
+//   if err != nil { ... }
+//   defer r.Close()
+//   // write to r like any io.Writer
+//
+// Thread safety:
+//   All exported methods are safe for concurrent use, except that File()
+//   returns a raw *os.File whose lifetime is not protected after the call.
+//   Use Name() instead if you need to open the file independently, or
+//   acquire external synchronization if you must hold the File handle.
 package rotate
 
 import (
@@ -26,7 +53,13 @@ import (
 	"path/filepath"
 )
 
+// ErrorHnd is a callback invoked when an automatic rotation fails. It receives
+// the Rotate instance and the error that occurred. If nil, rotation errors
+// are silently ignored.
 type ErrorHnd func(*Rotate, error)()
+
+// Rotate is a file writer that automatically rotates the log file when its
+// size reaches a configurable maximum. It implements io.Writer and io.Closer.
 type Rotate struct {
 	wmu         sync.Mutex		// protects write
 	rmu         sync.Mutex		// protects rotation
@@ -53,12 +86,41 @@ type descr struct {
 // Opt is a function type used to pass information to New().
 type Opt func(*descr)
 
+// WithFileName sets the path of the file to write to. Required.
 func WithFileName(f string) Opt {return func(x *descr) {x.fn = f}}
+
+// WithMaxSize sets the file size in bytes that triggers a rotation.
+// When maxSize > 0, rotation is enabled. If maxSize == 0 (default),
+// no rotation occurs and the file is truncated on open (unless
+// WithInitialAppend(true) is used).
 func WithMaxSize(f int64) Opt {return func(x *descr) {x.ms, x.rot = f, 0}}
+
+// WithNBackups sets the number of backup copies to keep.
+// The default is 1. If maxSize > 0, backups are rotated through
+// the naming scheme described in the package documentation.
 func WithNBackups(f uint) Opt {return func(x *descr) {x.mv = f}}
+
+// WithErrorHandler sets a callback for rotation errors. If nil (default),
+// rotation errors are ignored.
 func WithErrorHandler(f ErrorHnd) Opt {return func(x *descr) {x.hnd = f}}
+
+// WithInitialAppend controls whether the file is appended to or truncated
+// when opened. If true, existing content is preserved and new data is
+// appended. If false (default), the file is truncated.
 func WithInitialAppend(f bool) Opt {return func(x *descr) {x.append = f}}
 
+// New creates a Rotate writer. Options must include WithFileName.
+// Other options are optional.
+//
+// If maxSize is zero (or not set), the file is opened (or created) once
+// and never rotated. In that case, WithInitialAppend controls truncation.
+//
+// If maxSize > 0, rotation is enabled. The file is initially truncated
+// (unless WithInitialAppend(true) is used). On the first open, a rotation
+// is performed to ensure any old backup chain starts cleanly.
+//
+// Returns an error if the file cannot be opened or if the initial rotation
+// fails (rotation enabled case).
 func New(_opts ...Opt) (*Rotate, error) {
 	d := &descr{mv: 1, rot: -1}
 	for _, o := range _opts {o(d)}
@@ -91,7 +153,13 @@ func New(_opts ...Opt) (*Rotate, error) {
 	return r, nil
 }
 
+// Close closes the underlying file. After Close, no more writes or rotations
+// are possible. It is safe to call multiple times.
 func (r *Rotate) Close() error {
+	r.rmu.Lock()
+	defer r.rmu.Unlock()
+	r.wmu.Lock()
+	defer r.wmu.Unlock()
 	if r.fh != nil {
 		if err := r.fh.Close(); err != nil {return err}
 		r.fh = nil
@@ -99,11 +167,12 @@ func (r *Rotate) Close() error {
 	return nil
 }
 
-// This is supposed to be protected by rmu.
+// doRotate performs the actual file rotation. Must be called with rmu held.
 func (r *Rotate) doRotate() error {
+	target := filepath.Join(r.dir, r.fn)
 	fn := filepath.Join(r.dir, `.`+r.fn)
 	f, err := os.OpenFile(
-		fn, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_APPEND, 0600,
+		fn, os.O_CREATE|os.O_TRUNC|os.O_WRONLY|os.O_APPEND, 0600,
 	)
 	if err != nil {return err}
 
@@ -140,12 +209,12 @@ func (r *Rotate) doRotate() error {
 				return			// handle "break" or similar in for range loop
 			}
 		}
-		yield(fn, filepath.Join(r.dir, r.fn))
+		yield(fn, target)
 	}
 
 	for from, to := range pairs {
 		err = os.Rename(from, to)
-		if to != r.fn && errors.Is(err, fs.ErrNotExist) {err = nil}
+		if to != target && errors.Is(err, fs.ErrNotExist) {err = nil}
 		if err != nil {return err}
 	}
 	r.rot++
@@ -163,6 +232,12 @@ func (r *Rotate) doRotate() error {
 	return nil
 }
 
+// Rotate triggers an asynchronous rotation. If a rotation is already in
+// progress, this call is a no‑op (the mutex TryLock fails). The rotation
+// happens in a separate goroutine. Any error is passed to the ErrorHandler.
+//
+// This is called automatically by Write when the size threshold is reached,
+// but can also be called manually to force a rotation.
 func (r *Rotate) Rotate() {
 	if r.rmu.TryLock() {
 		go func() {
@@ -170,23 +245,38 @@ func (r *Rotate) Rotate() {
 			r.rmu.Unlock()
 
 			// errorHnd should not be called while we are holding the lock
-			if err != nil {r.errorHnd(r, err)}
+			if err != nil {if r.errorHnd != nil {r.errorHnd(r, err)}}
 		}()
 	}
 }
 
-func (r *Rotate) Name() string {return filepath.Join(r.dir, r.fn)}
+// Name returns the full path of the main log file.
+func (r *Rotate) Name() string {
+	return filepath.Join(r.dir, r.fn)
+}
+
+// File returns the current underlying *os.File. The returned file handle
+// may be closed or replaced by concurrent calls to Close or rotation.
+// Use Name() to open your own file handle if you need independent access.
 func (r *Rotate) File() *os.File {
 	r.wmu.Lock()
 	defer r.wmu.Unlock()
 	return r.fh
 }
+
+// Rotations returns the number of successful rotations performed so far.
 func (r *Rotate) Rotations() int64 {
 	r.rmu.Lock()
 	defer r.rmu.Unlock()
 	return r.rot
 }
 
+// Write writes len(p) bytes to the file. It returns the number of bytes
+// written and any error that occurred. Short writes are handled
+// automatically by retrying.
+//
+// If the cumulative written size exceeds maxSize after this write,
+// an asynchronous rotation is triggered.
 func (r *Rotate) Write(p []byte) (int, error) {
 	need_to_rotate := false
 	r.wmu.Lock()

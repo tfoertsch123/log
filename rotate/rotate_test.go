@@ -435,6 +435,7 @@ func TestFirstRotateFails(t *testing.T) {
 	tmpfile := filepath.Join(dir, ".readonly.log")
 	f, err := os.Create(tmpfile)
 	f.Close()
+	os.Chmod(tmpfile, 0444) // read-only
 	
 	if err != nil {
 		t.Fatal(err)
