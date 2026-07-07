@@ -47,7 +47,7 @@ func TestNewNoRotationNoAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.File().Close()
+	defer r.Close()
 
 	// Check file created
 	if !fileExists(fn) {
@@ -76,6 +76,27 @@ func TestNewNoRotationNoAppend(t *testing.T) {
 	}
 }
 
+func TestErrorClose(t *testing.T) {
+	dir := setup(t)
+	fn := filepath.Join(dir, "test.log")
+
+	r, err := New(WithFileName(fn))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check file created
+	if !fileExists(fn) {
+		t.Error("file was not created")
+	}
+
+	r.File().Close()
+	err = r.Close()
+	if err == nil {
+		t.Error("Close() should return error")
+	}
+}
+
 func TestNewRotationWithAppend(t *testing.T) {
 	dir := setup(t)
 	fn := filepath.Join(dir, "test.log")
@@ -91,7 +112,7 @@ func TestNewRotationWithAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.File().Close()
+	defer r.Close()
 
 	// Check file created
 	if !fileExists(fn) {
@@ -143,7 +164,7 @@ func TestNewWithRotationAndSizeTrigger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.File().Close()
+	defer r.Close()
 
 	if r.Rotations() != 1 {
 		t.Errorf("number of rotations should be 1")
@@ -202,7 +223,7 @@ func TestMultipleRotationsAndNaming(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.File().Close()
+	defer r.Close()
 
 	// Write data to trigger three rotations
 	data := []string{"AAAA", "BBBB", "CCCC", "DDDD"}
@@ -258,7 +279,7 @@ func TestManualRotate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.File().Close()
+	defer r.Close()
 
 	// Write some data
 	_, err = r.Write([]byte("initial"))
@@ -447,7 +468,7 @@ func TestErrorFullFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.File().Close()
+	defer r.Close()
 
 	// Write something
 	_, err = r.Write([]byte("hello"))
@@ -467,7 +488,7 @@ func TestConcurrentWritesWithRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.File().Close()
+	defer r.Close()
 
 	// Launch several goroutines writing concurrently
 	var wg sync.WaitGroup

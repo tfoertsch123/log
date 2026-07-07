@@ -91,6 +91,14 @@ func New(_opts ...Opt) (*Rotate, error) {
 	return r, nil
 }
 
+func (r *Rotate) Close() error {
+	if r.fh != nil {
+		if err := r.fh.Close(); err != nil {return err}
+		r.fh = nil
+	}
+	return nil
+}
+
 // This is supposed to be protected by rmu.
 func (r *Rotate) doRotate() error {
 	fn := filepath.Join(r.dir, `.`+r.fn)
