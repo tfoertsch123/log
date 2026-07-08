@@ -84,9 +84,14 @@ type Logger struct {
 	derived map[*Logger]struct{}
 }
 
+type OutputFactory func() (io.Writer, error)
+type OutputFactoryErrorHandler func(error)
+
 // LogOpts holds optional configuration for creating a new Logger via New.
 type LogOpts struct {
 	out     *io.Writer
+	outcr   OutputFactory
+	crehnd  OutputFactoryErrorHandler
 	topic   *string
 	level   *Level
 	minloc  *Level		   // minimum level to print the code location
@@ -195,6 +200,13 @@ func WithLevel(lv Level) Opt {return func(lg *LogOpts) {
 // WithOutput returns an Opt that sets the output writer.
 func WithOutput(out io.Writer) Opt {return func(lg *LogOpts) {lg.out = &out}}
 
+// WithOutput returns an Opt that sets the output writer.
+func WithOutputFactory(c OutputFactory, hnd OutputFactoryErrorHandler) Opt {
+	return func(lg *LogOpts) {
+		lg.outcr, lg.crehnd = c, hnd
+	}
+}
+
 // WithTopic returns an Opt that sets the log topic string.
 // The topic is prepended in square brackets (e.g. " [mytopic]").
 // An empty topic disables the topic prefix.
@@ -230,6 +242,16 @@ func (l *Logger) New(_opts ...Opt) *Logger {
 	opts := &LogOpts{}
 	for _, o := range _opts {o(opts)}
 	if opts.out != nil {new.out = *opts.out}
+	if opts.out == nil && opts.outcr != nil {
+		out, err := opts.outcr()
+		if err != nil {
+			if opts.crehnd != nil {
+				opts.crehnd(err)
+			}
+			return nil
+		}
+		new.out = out
+	}
 	if opts.topic != nil {new.topic = *opts.topic}
 	if opts.level != nil {new.level = *opts.level}
 	if opts.minloc != nil {new.minloc = *opts.minloc}

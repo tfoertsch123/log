@@ -250,9 +250,19 @@ func (r *Rotate) Rotate() {
 	}
 }
 
-// Name returns the full path of the main log file.
+// Name returns the name of the main log file.
 func (r *Rotate) Name() string {
 	return filepath.Join(r.dir, r.fn)
+}
+
+// MaxSize returns the MaxSize parameter
+func (r *Rotate) MaxSize() int64 {
+	return r.maxSize
+}
+
+// NBackups returns the NBackups parameter
+func (r *Rotate) NBackups() uint {
+	return r.maxVersions
 }
 
 // File returns the current underlying *os.File. The returned file handle

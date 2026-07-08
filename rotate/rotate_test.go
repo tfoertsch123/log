@@ -170,6 +170,14 @@ func TestNewWithRotationAndSizeTrigger(t *testing.T) {
 		t.Errorf("number of rotations should be 1")
 	}
 
+	if r.MaxSize() != 10 {
+		t.Errorf("MaxSize should be 10")
+	}
+
+	if r.NBackups() != 2 {
+		t.Errorf("NBackups should be 2")
+	}
+
 	// Write 8 bytes – no rotation yet
 	_, err = r.Write([]byte("12345678"))
 	if err != nil {
