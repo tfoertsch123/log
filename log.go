@@ -200,7 +200,16 @@ func WithLevel(lv Level) Opt {return func(lg *LogOpts) {
 // WithOutput returns an Opt that sets the output writer.
 func WithOutput(out io.Writer) Opt {return func(lg *LogOpts) {lg.out = &out}}
 
-// WithOutput returns an Opt that sets the output writer.
+// WithOutputFactory returns an Opt that allows delayed creation of
+// the output writer. The main intend of this to work in combination
+// with [ParseURL]. An [OutputFactory] is a function returning an io.Writer
+// and an error. The callback function is called as part of [New].
+// If the returned error is nil, the produced io.writer becomes the
+// output of the new logger. If the error is different from nil, the
+// [OutputFactoryErrorHandler] is called with the error as the sole
+// parameter. The resulting logger is then nil.
+// If both, [WithOutput] and [WithOutputFactory], are used, [WithOutputFactory]
+// is ignored.
 func WithOutputFactory(c OutputFactory, hnd OutputFactoryErrorHandler) Opt {
 	return func(lg *LogOpts) {
 		lg.outcr, lg.crehnd = c, hnd
