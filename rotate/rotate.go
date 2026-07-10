@@ -19,9 +19,15 @@
 // a configurable threshold. Backups are kept with a versioning scheme:
 //   - The main file:       <filename>
 //   - First backup:        <filename>~
-//   - Second backup:       <filename>~01
-//   - Third backup:        <filename>~02
+//   - Second backup:       <filename>~2
+//   - Third backup:        <filename>~3
 //   - etc.
+// If the number of kept backups is >=10, the format number if padded with
+// leading zeroes:
+//   - The main file:       <filename>
+//   - First backup:        <filename>~
+//   - Second backup:       <filename>~02
+//   - 10th backup:         <filename>~10
 //
 // Usage:
 //   r, err := rotate.New(
@@ -197,7 +203,7 @@ func (r *Rotate) doRotate() error {
 	suff := func(i uint) string {
 		if i == 0 {return ""}
 		if i == 1 {return "~"}
-		return fmt.Sprintf(`~%0*d`, width, i-1)
+		return fmt.Sprintf(`~%0*d`, width, i)
 	}
 
 	pairs := func(yield func(string, string) bool) {

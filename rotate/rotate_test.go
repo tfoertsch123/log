@@ -226,7 +226,7 @@ func TestMultipleRotationsAndNaming(t *testing.T) {
 	r, err := New(
 		WithFileName(fn),
 		WithMaxSize(4),
-		WithNBackups(3),  // keep 3 backups: ~, ~01, ~02
+		WithNBackups(3),  // keep 3 backups: ~, ~2, ~3
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -246,23 +246,23 @@ func TestMultipleRotationsAndNaming(t *testing.T) {
 	// After all writes, naming should be:
 	// Main: empty (freshly rotated)
 	// ~: "DDDD" (second last)
-	// ~01: "CCCC"
-	// ~02: "BBBB" (oldest, but might be overwritten due to maxVersions=3)
+	// ~2: "CCCC"
+	// ~3: "BBBB" (oldest)
 	if got := readFile(t, fn); got != "" {
 		t.Errorf("main file = %q, want %q", got, "")
 	}
 	if got := readFile(t, fn+"~"); got != "DDDD" {
 		t.Errorf("backup ~ = %q, want %q", got, "DDDD")
 	}
-	if got := readFile(t, fn+"~1"); got != "CCCC" {
-		t.Errorf("backup ~01 = %q, want %q", got, "CCCC")
+	if got := readFile(t, fn+"~2"); got != "CCCC" {
+		t.Errorf("backup ~2 = %q, want %q", got, "CCCC")
 	}
-	if got := readFile(t, fn+"~2"); got != "BBBB" {
-		t.Errorf("backup ~02 = %q, want %q", got, "BBBB")
+	if got := readFile(t, fn+"~3"); got != "BBBB" {
+		t.Errorf("backup ~3 = %q, want %q", got, "BBBB")
 	}
 	// No third backup because maxVersions=3 (original + 2 backups)
-	if fileExists(fn + "~3") {
-		t.Error("unexpected backup ~3")
+	if fileExists(fn + "~4") {
+		t.Error("unexpected backup ~4")
 	}
 
 	// 5 rotations so far:
@@ -273,6 +273,59 @@ func TestMultipleRotationsAndNaming(t *testing.T) {
 	// 5 - after DDDD
 	if r.Rotations() != 5 {
 		t.Errorf("number of rotations should be 5")
+	}
+}
+
+func TestMultipleRotationsAndNamingWithPadding(t *testing.T) {
+	dir := setup(t)
+	fn := filepath.Join(dir, "test.log")
+	r, err := New(
+		WithFileName(fn),
+		WithMaxSize(4),
+		WithNBackups(13),  // keep 13 backups: ~, ~02, ~03, ..., ~13
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	// Write data to trigger 13 rotations
+	for i := range 13 {
+		_, err = fmt.Fprintf(r, "%04d", i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if got := readFile(t, fn); got != "" {
+		t.Errorf("main file = %q, want %q", got, "")
+	}
+
+	if got := readFile(t, fn+"~"); got != "0012" {
+		t.Errorf("backup ~ = %q, want %q", got, "0012")
+	}
+
+	for i := 13; i > 1; i-- {
+		want := fmt.Sprintf("%04d", 13-i)
+		fn_ := fmt.Sprintf("%s~%02d", fn, i)
+		if got := readFile(t, fn_); got != want {
+			t.Errorf("backup ~%02d = %q, want %q", i, got, want)
+		}
+	}
+
+	if fileExists(fn + "~14") {
+		t.Error("unexpected backup ~14")
+	}
+
+	// 14 rotations so far:
+	// 1 - initial creation of the file
+	// 2 - after 0000
+	// ...
+	// 13 - after 0011
+	// 14 - after 0012
+	if r.Rotations() != 14 {
+		t.Errorf("number of rotations should be 14")
 	}
 }
 
@@ -535,8 +588,8 @@ func TestConcurrentWritesWithRotation(t *testing.T) {
 
 	main := readFile(t, fn)
 	first := readFile(t, fn + "~")
-	second := readFile(t, fn + "~1")
-	third := readFile(t, fn + "~2")
+	second := readFile(t, fn + "~2")
+	third := readFile(t, fn + "~3")
 	if len(main)+len(first)+len(second)+len(third) != total {
 		t.Errorf("content length: exp %d got %d",
 			total,

@@ -71,6 +71,7 @@ var ErrInvalidFormat error = errors.New(`invalid format`)
 //   - timeformat - corresponds to [WithTimeFmt]
 //   - multiline - corresponds to [WithMultiLine]. True values can be expressed
 //     as "on", "true", "1" or "yes"
+//   - mlprefix - corresponds to [WithMultiLinePrefix]
 //   - minloc - corresponds to [WithMinLocation]
 //   - locdirs - corresponds to [WithLocDirectories]
 //   - topic - corresponds to [WithTopic]
@@ -202,6 +203,7 @@ func ParseURL(s string, hnd func(error)) ([]Opt, error) {
 		"level",
 		"timeformat",
 		"multiline",
+		"mlprefix",
 		"minloc",
 		"locdirs",
 		"topic",
@@ -240,6 +242,9 @@ func ParseURL(s string, hnd func(error)) ([]Opt, error) {
 				default:
 					opt = append(opt, WithMultiLine(false))
 				}
+
+			case "mlprefix":
+				opt = append(opt, WithMultiLinePrefix(&s[0]))
 
 			case "minloc":
 				l, err := ParseLevel(s[0])

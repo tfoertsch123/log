@@ -65,7 +65,7 @@ func ExampleParseURL_rotate() {
 
 	cat(logf)
 	cat(logf + "~")
-	cat(logf + "~1")
+	cat(logf + "~2")
 
 	// Output:
 	// file test.log, len 0:
@@ -74,7 +74,7 @@ func ExampleParseURL_rotate() {
 	// 2026-10-05 09:02 INFO [MAIN] Info Message
 	// 2026-10-05 09:02 DEBUG [MAIN] (log/exmpl06_URL_rotate_test.go:60) Debug Message
 	//
-	// file test.log~1, len 128:
+	// file test.log~2, len 128:
 	// 2026-10-05 09:02 INFO [EXAMPLE] Info Message
 	// 2026-10-05 09:02 DEBUG [EXAMPLE] (log/exmpl06_URL_rotate_test.go:51) Debug Message
 }

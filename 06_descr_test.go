@@ -44,7 +44,7 @@ func TestParseURL_ValidAbsolute(t *testing.T) {
 	opts, err := ParseURL(
 		"file://INFO@"+dir+"/app.log?"+
 			"maxsize=10MiB&nbackups=3&timeformat=rfc3339&"+
-			"multiline=on&minloc=DEBG2&locdirs=2&topic=test",
+			"multiline=on&mlprefix=&minloc=DEBG2&locdirs=2&topic=test",
 		ec.handler,
 	)
 	if err != nil {
@@ -69,6 +69,10 @@ func TestParseURL_ValidAbsolute(t *testing.T) {
 	// Check multiline
 	if lo.multiln == nil || *lo.multiln != true {
 		t.Errorf("expected multiline true, got %v", lo.multiln)
+	}
+	// Check multilineprefix
+	if lo.mlprfx == nil || *lo.mlprfx != "" || !lo.setprfx {
+		t.Errorf("expected empty mlprfx, got (%v, %v)", lo.mlprfx, lo.setprfx)
 	}
 	// Check minloc
 	if lo.minloc == nil || *lo.minloc != DEBG2 {
