@@ -81,18 +81,26 @@ type Logger struct {
 	nlocdir int			   // how many directory path components to log
 	timefmt string
 	multiln bool
+	mlprfx  *string
 	derived map[*Logger]struct{}
 }
+
+type OutputFactory func() (io.Writer, error)
+type OutputFactoryErrorHandler func(error)
 
 // LogOpts holds optional configuration for creating a new Logger via New.
 type LogOpts struct {
 	out     *io.Writer
+	outcr   OutputFactory
+	crehnd  OutputFactoryErrorHandler
 	topic   *string
 	level   *Level
 	minloc  *Level		   // minimum level to print the code location
 	nlocdir *int		   // how many directory path components to log
 	timefmt *string
 	multiln *bool
+	mlprfx  *string
+	setprfx bool
 }
 
 func (l *Logger) string() string {
@@ -167,10 +175,30 @@ type Opt func(*LogOpts)
 // stamp.
 func WithTimeFmt(f string) Opt {return func(lg *LogOpts) {lg.timefmt = &f}}
 
-// WithTimeFmt returns an Opt that turns on/off multiline mode.
+// WithMultiLine returns an Opt that turns on/off multiline mode.
 // In multiline mode, line breaks in the log message are detected and
-// each line is prefixed with the normal line prefix.
+// each line is prefixed with the normal line prefix or the MultiLinePrefix
+// if set.
 func WithMultiLine(x bool) Opt {return func(lg *LogOpts) {lg.multiln = &x}}
+
+// WithMLPrefix returns an Opt that sets the MultiLinePrefix. This is used
+// in combination with MultiLineMode. By default, the multiline message
+// "this\nis a\nmultiline\nmessage" will be rendered like so:
+//   2026-10-05 09:02 NOTICE this
+//   2026-10-05 09:02 NOTICE is a
+//   2026-10-05 09:02 NOTICE multiline
+//   2026-10-05 09:02 NOTICE message
+// If the MultiLinePrefix is set to "+", it becomes
+//   2026-10-05 09:02 NOTICE this
+//   +                       is a
+//   +                       multiline
+//   +                       message
+// The empty string is also accepted. If nil is passed, the default behavior
+// is restored.
+func WithMultiLinePrefix(x *string) Opt {return func(lg *LogOpts) {
+	lg.setprfx = true
+	lg.mlprfx = x
+}}
 
 // WithMinLocation returns an Opt that sets the minimum log level for printing
 // the caller’s source location. Levels outside [NOTICE+1, DEBG5] disable
@@ -195,6 +223,22 @@ func WithLevel(lv Level) Opt {return func(lg *LogOpts) {
 // WithOutput returns an Opt that sets the output writer.
 func WithOutput(out io.Writer) Opt {return func(lg *LogOpts) {lg.out = &out}}
 
+// WithOutputFactory returns an Opt that allows delayed creation of
+// the output writer. The main intend of this to work in combination
+// with [ParseURL]. An [OutputFactory] is a function returning an io.Writer
+// and an error. The callback function is called as part of [New].
+// If the returned error is nil, the produced io.writer becomes the
+// output of the new logger. If the error is different from nil, the
+// [OutputFactoryErrorHandler] is called with the error as the sole
+// parameter. The resulting logger is then nil.
+// If both, [WithOutput] and [WithOutputFactory], are used, [WithOutputFactory]
+// is ignored.
+func WithOutputFactory(c OutputFactory, hnd OutputFactoryErrorHandler) Opt {
+	return func(lg *LogOpts) {
+		lg.outcr, lg.crehnd = c, hnd
+	}
+}
+
 // WithTopic returns an Opt that sets the log topic string.
 // The topic is prepended in square brackets (e.g. " [mytopic]").
 // An empty topic disables the topic prefix.
@@ -216,6 +260,7 @@ func (l *Logger) cpy() *Logger {
 		minloc:  l.minloc,
 		nlocdir: l.nlocdir,
 		multiln: l.multiln,
+		mlprfx:  l.mlprfx,
 	}
 	if l.derived == nil {l.derived = make(map[*Logger]struct{}, 10)}
 	l.derived[new] = struct{}{}
@@ -230,12 +275,23 @@ func (l *Logger) New(_opts ...Opt) *Logger {
 	opts := &LogOpts{}
 	for _, o := range _opts {o(opts)}
 	if opts.out != nil {new.out = *opts.out}
+	if opts.out == nil && opts.outcr != nil {
+		out, err := opts.outcr()
+		if err != nil {
+			if opts.crehnd != nil {
+				opts.crehnd(err)
+			}
+			return nil
+		}
+		new.out = out
+	}
 	if opts.topic != nil {new.topic = *opts.topic}
 	if opts.level != nil {new.level = *opts.level}
 	if opts.minloc != nil {new.minloc = *opts.minloc}
 	if opts.nlocdir != nil {new.nlocdir = *opts.nlocdir}
 	if opts.timefmt != nil {new.timefmt = *opts.timefmt}
 	if opts.multiln != nil {new.multiln = *opts.multiln}
+	if opts.setprfx {new.mlprfx = opts.mlprfx}
 	return new
 }
 
@@ -314,13 +370,14 @@ func (l *Logger) _close() *Logger {
 	if l.IsRoot() {
 		// closing root means reinit
 		l.out = os.Stderr
-		l.level = WARN
-		l.timefmt = "2006-01-02 15:04:05.000000"
-		l.derived = nil
 		l.topic = ``
+		l.level = WARN
 		l.minloc = DEBUG
 		l.nlocdir = -1
+		l.timefmt = "2006-01-02 15:04:05.000000"
 		l.multiln = false
+		l.mlprfx = nil
+		l.derived = nil
 		return l
 	} else {
 		l.prev = l					// mark as closed except for root
@@ -447,18 +504,44 @@ func (l *Logger) SetMultiLine(ml bool) {
 	}
 }
 
+// SetMultiLinePrefix sets the MultiLinePrefix for this logger and all its
+// descendants.
+func (l *Logger) SetMultiLinePrefix(x *string) {
+	l.mu.Lock(); defer l.mu.Unlock()
+
+	l.mlprfx = x
+	for _, lg := range l.kids(true) {
+		lg.mu.Lock()
+		lg.mlprfx = x
+		lg.mu.Unlock()
+	}
+}
+
 // GetMultiLine returns true if multiline mode is on for this logger.
 func (l *Logger) GetMultiLine() bool {
 	l.mu.Lock(); defer l.mu.Unlock()
 	return l.multiln
 }
 
+// GetMultiLinePrefix returns the MultiLinePrefix for this logger.
+func (l *Logger) GetMultiLinePrefix() *string {
+	l.mu.Lock(); defer l.mu.Unlock()
+	return l.mlprfx
+}
+
 // SetMultiLine turns multiline mode on or off for the current logger and
 // all its descendants.
 func SetMultiLine(ml bool) {L().SetMultiLine(ml)}
 
+// SetMultiLinePrefix sets the MultiLinePrefix for the current logger and
+// all its descendants.
+func SetMultiLinePrefix(x *string) {L().SetMultiLinePrefix(x)}
+
 // GetMultiLine returns true if multiline mode is on for the current logger.
 func GetMultiLine() bool {return L().GetMultiLine()}
+
+// GetMultiLinePrefix returns the MultiLinePrefix for the current logger.
+func GetMultiLinePrefix() *string {return L().GetMultiLinePrefix()}
 
 // SetOutput sets the output writer for this logger and all its descendants.
 func (l *Logger) SetOutput(out io.Writer) {
@@ -528,8 +611,7 @@ func SetNow(now_f func() time.Time) func() time.Time {
 }
 
 func (l *Logger) prnt(lvl Level, m string, loc string) {
-	tm := _now().Format(l.timefmt)
-	prfx := lvl.String() + l.topic + loc
+	prfx := _now().Format(l.timefmt) + " " + lvl.String() + l.topic + loc
 	if l.multiln {
 		start := 0
 		for {
@@ -543,7 +625,7 @@ func (l *Logger) prnt(lvl Level, m string, loc string) {
 					line = line[:len(line)-1]
 				}
 				if len(line) > 0 {
-					fmt.Fprintln(l.out, tm, prfx, line)
+					fmt.Fprintln(l.out, prfx, line)
 				}
 				break
 			}
@@ -551,15 +633,18 @@ func (l *Logger) prnt(lvl Level, m string, loc string) {
 			end := start + idx
 			// Check for '\r' just before the '\n'
 			if end > start && m[end-1] == '\r' {
-				fmt.Fprintln(l.out, tm, prfx, m[start : end-1])
+				fmt.Fprintln(l.out, prfx, m[start : end-1])
 			} else {
-				fmt.Fprintln(l.out, tm, prfx, m[start:end])
+				fmt.Fprintln(l.out, prfx, m[start:end])
+			}
+			if start == 0 && l.mlprfx != nil {
+				prfx= fmt.Sprintf("%-*s", len(prfx), *l.mlprfx)
 			}
 			// Move past the '\n'
 			start = end + 1
 		}
 	} else {
-		fmt.Fprintln(l.out, tm, prfx, m)
+		fmt.Fprintln(l.out, prfx, m)
 	}
 }
 

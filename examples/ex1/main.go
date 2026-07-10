@@ -4,7 +4,7 @@ import (
 	"github.com/tfoertsch123/log"
 )
 
-var base *log.Logger = log.NewR(log.WithTimeFmt("2006-01-02 15:04:05"))
+var base *log.Logger = log.NewR(log.WithTimeFmt("2006-01-02 15:04:05"))
 var tpc1 *log.Logger = base.New(log.WithTopic("TOPIC1"))
 var tpc2 *log.Logger = base.New(log.WithTopic("TOPIC2"))
 

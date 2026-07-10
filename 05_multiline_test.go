@@ -55,6 +55,76 @@ func TestMultiLine(t *testing.T) {
 	func(){
 		NewC(
 			WithTimeFmt("2006-01-02"),
+			WithTopic("MLPRFX"),
+			WithMultiLine(true),
+			WithMultiLinePrefix(func()*string{x := "+++"; return &x}()),
+		)
+		defer Close()
+
+		L().Warn("line1\nline2\nline3\n")
+		exp := ("2026-10-05 WARN [MLPRFX] line1\n"+
+			    "+++                      line2\n"+
+				"+++                      line3\n")
+		if b.String() != exp {
+			t.Errorf(`got %v`, b.String())
+		}
+		b.Reset()
+
+		NewC(
+			WithTimeFmt("2006-01-02"),
+			WithTopic("PRFXRST"),
+			WithMultiLinePrefix(nil),
+		)
+
+		L().Warn("line1\nline2\nline3\n")
+		exp = ("2026-10-05 WARN [PRFXRST] line1\n"+
+			   "2026-10-05 WARN [PRFXRST] line2\n"+
+			   "2026-10-05 WARN [PRFXRST] line3\n")
+		if b.String() != exp {
+			t.Errorf(`got %v`, b.String())
+		}
+		b.Reset()
+
+		lg := NewK()
+
+		if lg.GetMultiLinePrefix() != nil {
+			t.Errorf(`unexpected result for GetMultiLinePrefix`)
+		}
+
+		SetMultiLinePrefix(func()*string{x := ">"; return &x}())
+
+		L().Warn("line1\nline2\nline3\n")
+		exp = ("2026-10-05 WARN [PRFXRST] line1\n"+
+			   ">                         line2\n"+
+			   ">                         line3\n")
+		if b.String() != exp {
+			t.Errorf(`got %v`, b.String())
+		}
+		b.Reset()
+
+		if GetMultiLinePrefix() == nil || *GetMultiLinePrefix() != ">" {
+			t.Errorf(`unexpected result for GetMultiLinePrefix`)
+		}
+
+		if lg.GetMultiLinePrefix() == nil || *lg.GetMultiLinePrefix() != ">" {
+			t.Errorf(`unexpected result for GetMultiLinePrefix`)
+		}
+
+		Close()
+
+		L().Warn("line1\nline2\nline3\n")
+		exp = ("2026-10-05 WARN [MLPRFX] line1\n"+
+			   "+++                      line2\n"+
+			   "+++                      line3\n")
+		if b.String() != exp {
+			t.Errorf(`got %v`, b.String())
+		}
+		b.Reset()
+	}()
+
+	func(){
+		NewC(
+			WithTimeFmt("2006-01-02"),
 			WithTopic("ML:\\r\\n"),
 			WithMultiLine(true),
 		)

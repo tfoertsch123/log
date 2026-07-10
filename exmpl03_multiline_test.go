@@ -20,6 +20,12 @@ func Example_multiline() {
 	log.NewC(log.WithMultiLine(true))
 
 	log.Notice("this\nis a\nmultiline\nmessage")
+
+	mlprefix := ">"
+	log.NewC(log.WithMultiLinePrefix(&mlprefix))
+
+	log.Notice("this\nis a\nmultiline\nmessage")
+	log.Warn("and another\nmessage")
 	// Output:
 	// 2026-10-05 09:02 NOTICE this
 	// is a
@@ -29,6 +35,12 @@ func Example_multiline() {
 	// 2026-10-05 09:02 NOTICE is a
 	// 2026-10-05 09:02 NOTICE multiline
 	// 2026-10-05 09:02 NOTICE message
+	// 2026-10-05 09:02 NOTICE this
+	// >                       is a
+	// >                       multiline
+	// >                       message
+	// 2026-10-05 09:02 WARN and another
+	// >                     message
 }
 
 // Local Variables:
