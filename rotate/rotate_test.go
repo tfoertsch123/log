@@ -1,10 +1,12 @@
 package rotate
 
 import (
+	"errors"
 	"fmt"
-	"sync"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -97,6 +99,52 @@ func TestErrorClose(t *testing.T) {
 	}
 }
 
+func TestClosedRotate(t *testing.T) {
+	dir := setup(t)
+	fn := filepath.Join(dir, "test.log")
+
+	r, err := New(WithFileName(fn), WithMaxSize(10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write on a closed object should return fs.ErrClosed
+
+	n, err := r.Write([]byte("hello"))
+	if n != 0 {
+		t.Errorf("Write() after Close() wrote %d bytes, want 0", n)
+	}
+	if !errors.Is(err, fs.ErrClosed) {
+		t.Errorf("Write() after Close() error = %v, want %v", err, fs.ErrClosed)
+	}
+
+	// Here we test 2 things:
+	// - Rotate() on a closed object does nothing
+	// - the lock is released after the operation
+	rots := r.Rotations()
+	r.Rotate()
+
+	done := make(chan int64, 1)
+	go func() { done <- r.Rotations() }()
+
+	select {
+	case rot_ := <-done:
+		if rot_ != rots {
+			t.Errorf("No rotation should have happened (rot_=%v, rot=%v)",
+				rot_, rots)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Rotate() after Close() left rotation mutex locked")
+	}
+
+	if r.File() != nil {
+		t.Fatal("Rotate() after Close() reopened the file")
+	}
+}
+
 func TestNewRotationWithAppend(t *testing.T) {
 	dir := setup(t)
 	fn := filepath.Join(dir, "test.log")
@@ -140,7 +188,7 @@ func TestNewRotationWithAppend(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify content
-	if got := readFile(t, fn + `~`); got != "to be kepthello" {
+	if got := readFile(t, fn+`~`); got != "to be kepthello" {
 		t.Errorf("content = %q, want %q", got, "to be kepthello")
 	}
 
@@ -158,8 +206,8 @@ func TestNewWithRotationAndSizeTrigger(t *testing.T) {
 	fn := filepath.Join(dir, "test.log")
 	r, err := New(
 		WithFileName(fn),
-		WithMaxSize(10),       // rotate after 10 bytes
-		WithNBackups(2),       // keep 2 backups
+		WithMaxSize(10), // rotate after 10 bytes
+		WithNBackups(2), // keep 2 backups
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -226,7 +274,7 @@ func TestMultipleRotationsAndNaming(t *testing.T) {
 	r, err := New(
 		WithFileName(fn),
 		WithMaxSize(4),
-		WithNBackups(3),  // keep 3 backups: ~, ~2, ~3
+		WithNBackups(3), // keep 3 backups: ~, ~2, ~3
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -282,7 +330,7 @@ func TestMultipleRotationsAndNamingWithPadding(t *testing.T) {
 	r, err := New(
 		WithFileName(fn),
 		WithMaxSize(4),
-		WithNBackups(13),  // keep 13 backups: ~, ~02, ~03, ..., ~13
+		WithNBackups(13), // keep 13 backups: ~, ~02, ~03, ..., ~13
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -413,7 +461,7 @@ func TestErrorHandlingWithRotateNoPermission(t *testing.T) {
 	f.Close()
 	os.Chmod(roFile, 0444) // read-only
 
-	hndCalled := false
+	hndCalled := make(chan struct{}, 1)
 
 	// The difference to the previous case (TestErrorHandlingNoPermission)
 	// is that due to MaxSize we get a Rotate object that actually rotates.
@@ -423,8 +471,8 @@ func TestErrorHandlingWithRotateNoPermission(t *testing.T) {
 	r, err = New(
 		WithFileName(roFile),
 		WithMaxSize(10),
-		WithErrorHandler(func (r_ *Rotate, err_ error) {
-			hndCalled = true
+		WithErrorHandler(func(r_ *Rotate, err_ error) {
+			defer close(hndCalled)
 			if r_ != r {
 				t.Errorf("error handler called but the object is not the same")
 			}
@@ -442,25 +490,26 @@ func TestErrorHandlingWithRotateNoPermission(t *testing.T) {
 	defer os.Chmod(dir, 0755)
 
 	r.Rotate()
-	time.Sleep(100 * time.Millisecond)
-	if !hndCalled {
+	select {
+	case <-hndCalled:
+	case <-time.After(100 * time.Millisecond):
 		t.Error("error handler not called")
 	}
 }
 
 func TestErrorRenameFails(t *testing.T) {
- 	dir := setup(t)
+	dir := setup(t)
 	nm := filepath.Join(dir, "readonly.log")
 
-	hndCalled := false
+	hndCalled := make(chan struct{}, 1)
 
 	var r *Rotate
 	r, err := New(
 		WithFileName(nm),
 		WithNBackups(1),
 		WithMaxSize(10),
-		WithErrorHandler(func (r_ *Rotate, err_ error) {
-			hndCalled = true
+		WithErrorHandler(func(r_ *Rotate, err_ error) {
+			defer close(hndCalled)
 			if r_ != r {
 				t.Errorf("error handler called but the object is not the same")
 			}
@@ -474,14 +523,15 @@ func TestErrorRenameFails(t *testing.T) {
 	}
 
 	// This will cause EEXIST in doRotate()
-	err = os.Mkdir(nm + `~`, 0500)
+	err = os.Mkdir(nm+`~`, 0500)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	r.Rotate()
-	time.Sleep(100 * time.Millisecond)
-	if !hndCalled {
+	select {
+	case <-hndCalled:
+	case <-time.After(100 * time.Millisecond):
 		t.Error("error handler not called")
 	}
 }
@@ -497,7 +547,7 @@ func TestFirstRotateFails(t *testing.T) {
 	f, err := os.Create(tmpfile)
 	f.Close()
 	os.Chmod(tmpfile, 0444) // read-only
-	
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -544,8 +594,8 @@ func TestConcurrentWritesWithRotation(t *testing.T) {
 	fn := filepath.Join(dir, "concurrent.log")
 	r, err := New(
 		WithFileName(fn),
-		WithMaxSize(1000),		// we will write 3900 bytes
-		WithNBackups(3),		// that should generate main, ~, ~1 and ~2
+		WithMaxSize(1000), // we will write 3900 bytes
+		WithNBackups(3),   // that should generate main, ~, ~1 and ~2
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -558,7 +608,9 @@ func TestConcurrentWritesWithRotation(t *testing.T) {
 	done := make(chan struct{}, 0)
 	total := 0
 	go func() {
-		for n := range c {total+=n}
+		for n := range c {
+			total += n
+		}
 		close(done)
 	}()
 	for i := 0; i < 10; i++ {
@@ -587,9 +639,9 @@ func TestConcurrentWritesWithRotation(t *testing.T) {
 	}
 
 	main := readFile(t, fn)
-	first := readFile(t, fn + "~")
-	second := readFile(t, fn + "~2")
-	third := readFile(t, fn + "~3")
+	first := readFile(t, fn+"~")
+	second := readFile(t, fn+"~2")
+	third := readFile(t, fn+"~3")
 	if len(main)+len(first)+len(second)+len(third) != total {
 		t.Errorf("content length: exp %d got %d",
 			total,

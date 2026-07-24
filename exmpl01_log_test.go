@@ -6,7 +6,7 @@ import (
 	"github.com/tfoertsch123/log"
 )
 
-func Example_1() {
+func ExampleNewC() {
 	// Use SetNow() to generate a fixed timestamp. This is only needed
 	// to have this pass as a test so that go doc includes the example.
 	defer func(orig func() time.Time){log.SetNow(orig)}(log.SetNow(func() time.Time {

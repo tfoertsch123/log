@@ -17,7 +17,7 @@
 // Package log implements a simple logging package with a hierarchical
 // logger tree. Each logger can have children, and configuration changes
 // propagate to descendants. The package is thread-safe; all exported
-// methods are safe for concurrent use.
+// methods except SetNow() are safe for concurrent use.
 //
 // Each logger has an optional topic. The idea is that this is the main
 // distinction between loggers. Think of the topic as subsystem or part
@@ -128,6 +128,15 @@ func (l *Logger) string() string {
 func (l *Logger) String() string {
 	l.mu.Lock(); defer l.mu.Unlock()
 	return l.string()
+}
+
+// Deferred is a type representing a function wrapped for lazy execution.
+// See [Logl] for more details.
+type Deferred func() interface{}
+
+// Lazy() wraps a function for lazy evaluation. See [Logl] for more details.
+func Lazy(fn func() interface{}) Deferred {
+	return Deferred(fn)
 }
 
 // the global root logger
@@ -278,6 +287,9 @@ func (l *Logger) New(_opts ...Opt) *Logger {
 	if opts.out == nil && opts.outcr != nil {
 		out, err := opts.outcr()
 		if err != nil {
+			l.mu.Lock()
+			delete(l.derived, new)
+			l.mu.Unlock()
 			if opts.crehnd != nil {
 				opts.crehnd(err)
 			}
@@ -300,7 +312,7 @@ func (l *Logger) New(_opts ...Opt) *Logger {
 // lg.SetCurrent()
 func NewC(opts ...Opt) *Logger {
 	l := L().New(opts...)
-	l.SetCurrent()
+	if l != nil {l.SetCurrent()}
 	return l
 }
 
@@ -604,6 +616,8 @@ var _now = time.Now				// use a variable to allow mocking in testing
 // SetNow allows to change this package's notion of now. It's intended to
 // be used mainly for testing and debugging purposes. The default
 // value is [time.Now].
+// SetNow is not thread-safe. If you need to modify it from different go
+// routines, make sure to prevent all concurrent logging.
 func SetNow(now_f func() time.Time) func() time.Time {
 	old := _now
 	_now = now_f
@@ -728,21 +742,51 @@ func Logf(lvl Level, f string, p ...interface{}) {L().Logf(lvl, f, p...)}
 
 // formatted + late execution
 
-// Logl outputs a formatted message similar to [Fogf] with late evaluation
-// of arguments. Arguments that are functions of type func() interface{}
+func renderLazy(tmpl string, vals []interface{}) string {
+	return fmt.Sprintf(tmpl, vals...)
+}
+
+// Logl outputs a formatted message similar to [Logf] with late evaluation
+// of arguments. Arguments that are functions of type [Deferred]
 // are called to obtain their value.
+//
+// Example:
+//
+//  fib := func(yield func(uint64) bool) {
+// 	    var x, y uint64 = 1, 1
+//      for {
+// 	         if !yield(x) {return}
+// 	         x, y = y, x+y
+// 	    }
+//  }
+//
+//  // the sum will only be calculated if loglevel is >= log.DEBUG
+//  logger.Logl(
+//      log.DEBUG,
+//      `sum of first 1000 fibonacci numbers is %v`,
+//      log.Lazy(func() interface{} {
+// 	        var sum uint64
+// 	        i := 0
+// 	        for fb := range fib {
+// 	            sum += fb
+// 	            i++
+// 	            if i >= 1000 {break}
+// 	        }
+// 	        return sum
+//      }),    // log.Lazy() returns a log.Deferred object
+//  )
 func (l *Logger) Logl(lvl Level, f string, p ...interface{}) {
 	l.mu.Lock(); defer l.mu.Unlock()
 	if l == l.prev {return}		// logger is closed
 	if lvl <= l.level {
 		for i, v := range p {
-			if fn, ok := v.(func() interface{}); ok {
+			if fn, ok := v.(Deferred); ok {
 				p[i] = fn() // replace element with returned value
 			}
 		}
 		clr := ``
 		if lvl >= l.minloc {clr = caller(l.nlocdir)}
-		l.prnt(lvl, fmt.Sprintf(f, p...), clr)
+		l.prnt(lvl, renderLazy(f, p), clr)
 	}
 }
 

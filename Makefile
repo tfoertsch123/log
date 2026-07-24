@@ -1,6 +1,6 @@
 test:
-	go test -v -vet=off -count=1 -coverprofile=cover.out
-	go test -v -count=1 -coverprofile=rotate/cover.out ./rotate/...
+	go test -v -count=1 -coverprofile=cover.out ./
+	go test -v -count=1 -coverprofile=rotate/cover.out ./rotate/
 
 cover: test
 	go tool cover -html=cover.out -o coverage.html

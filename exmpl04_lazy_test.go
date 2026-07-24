@@ -37,7 +37,8 @@ func Example_lazy() {
 
 	// Now with lazy execution. This should take almost no time
 	// since complex_work() is not executed.
-	log.Infol("complex_work: %s", func() interface{} {return complex_work()})
+	log.Infol("complex_work: %s",
+		log.Lazy(func() interface{} {return complex_work()}))
 
 	log.Warnf("complex_work with lazy execution took %vms +/- 20ms",
 		20*math.Round(float64(time.Now().Sub(now))/float64(20*ms)),
@@ -49,7 +50,8 @@ func Example_lazy() {
 
 	now = time.Now()
 
-	log.Infol("complex_work: %s", func() interface{} {return complex_work()})
+	log.Infol("complex_work: %s",
+		log.Lazy(func() interface{} {return complex_work()}))
 
 	log.Warnf("complex_work if actually done took %vms +/- 20ms",
 		20*math.Round(float64(time.Now().Sub(now))/float64(20*ms)),
