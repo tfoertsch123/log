@@ -461,7 +461,7 @@ func TestErrorHandlingWithRotateNoPermission(t *testing.T) {
 	f.Close()
 	os.Chmod(roFile, 0444) // read-only
 
-	hndCalled := false
+	hndCalled := make(chan struct{}, 1)
 
 	// The difference to the previous case (TestErrorHandlingNoPermission)
 	// is that due to MaxSize we get a Rotate object that actually rotates.
@@ -472,7 +472,7 @@ func TestErrorHandlingWithRotateNoPermission(t *testing.T) {
 		WithFileName(roFile),
 		WithMaxSize(10),
 		WithErrorHandler(func(r_ *Rotate, err_ error) {
-			hndCalled = true
+			defer close(hndCalled)
 			if r_ != r {
 				t.Errorf("error handler called but the object is not the same")
 			}
@@ -490,8 +490,9 @@ func TestErrorHandlingWithRotateNoPermission(t *testing.T) {
 	defer os.Chmod(dir, 0755)
 
 	r.Rotate()
-	time.Sleep(100 * time.Millisecond)
-	if !hndCalled {
+	select {
+	case <-hndCalled:
+	case <-time.After(100 * time.Millisecond):
 		t.Error("error handler not called")
 	}
 }
@@ -500,7 +501,7 @@ func TestErrorRenameFails(t *testing.T) {
 	dir := setup(t)
 	nm := filepath.Join(dir, "readonly.log")
 
-	hndCalled := false
+	hndCalled := make(chan struct{}, 1)
 
 	var r *Rotate
 	r, err := New(
@@ -508,7 +509,7 @@ func TestErrorRenameFails(t *testing.T) {
 		WithNBackups(1),
 		WithMaxSize(10),
 		WithErrorHandler(func(r_ *Rotate, err_ error) {
-			hndCalled = true
+			defer close(hndCalled)
 			if r_ != r {
 				t.Errorf("error handler called but the object is not the same")
 			}
@@ -528,8 +529,9 @@ func TestErrorRenameFails(t *testing.T) {
 	}
 
 	r.Rotate()
-	time.Sleep(100 * time.Millisecond)
-	if !hndCalled {
+	select {
+	case <-hndCalled:
+	case <-time.After(100 * time.Millisecond):
 		t.Error("error handler not called")
 	}
 }

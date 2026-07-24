@@ -32,7 +32,7 @@ func readFile(t *testing.T, f string) string {
 }
 
 func cat(t *testing.T, f string) {
-    t.Logf("%q contents:\n%s", f, readFile(t, f))
+    // t.Logf("%q contents:\n%s", f, readFile(t, f))
 }
 
 // ---------------------------------------------------------------------------
@@ -110,19 +110,19 @@ func TestParseURL_ValidAbsolute(t *testing.T) {
 	}
 
 	if rot.MaxSize() != 10*1024*1024 {
-		t.Errorf("expected MaxSize: %q, got: %q", 10*1024*1024, rot.MaxSize())
+		t.Errorf("expected MaxSize: %v, got: %v", 10*1024*1024, rot.MaxSize())
 	}
 
 	if rot.NBackups() != 3 {
-		t.Errorf("expected NBackups: %q, got: %q", 3, rot.NBackups())
+		t.Errorf("expected NBackups: %v, got: %v", 3, rot.NBackups())
 	}
 }
 
 func TestParseURL_RelativeHostDot(t *testing.T) {
 	dir := t.TempDir()
-	if d, err := os.Getwd(); err == nil {t.Logf("WD is %q", d)}
+	// if d, err := os.Getwd(); err == nil {t.Logf("WD is %q", d)}
 	t.Chdir(dir)
-	if d, err := os.Getwd(); err == nil {t.Logf("changed WD to %q", d)}
+	// if d, err := os.Getwd(); err == nil {t.Logf("changed WD to %q", d)}
 	if d, err := os.Getwd(); err != nil || d != dir {
 		t.Fatalf("unexpected error: %v or expected: %q != got: %q", err, dir, d)
 	}
@@ -148,15 +148,15 @@ func TestParseURL_RelativeHostDot(t *testing.T) {
 
 	mx := lg.GetOutput().(*rotate.Rotate).MaxSize()
 	if mx != 100 {
-		t.Errorf("expected MaxSize: %q, got: %q", 100, mx)
+		t.Errorf("expected MaxSize: %v, got: %v", 100, mx)
 	}
 }
 
 func TestParseURL_RelativeEmptyHost(t *testing.T) {
 	dir := t.TempDir()
-	if d, err := os.Getwd(); err == nil {t.Logf("WD is %q", d)}
+	// if d, err := os.Getwd(); err == nil {t.Logf("WD is %q", d)}
 	t.Chdir(dir)
-	if d, err := os.Getwd(); err == nil {t.Logf("changed WD to %q", d)}
+	// if d, err := os.Getwd(); err == nil {t.Logf("changed WD to %q", d)}
 	if d, err := os.Getwd(); err != nil || d != dir {
 		t.Fatalf("unexpected error: %v or expected: %q != got: %q", err, dir, d)
 	}
@@ -242,7 +242,7 @@ func TestParseURL_FDopen(t *testing.T) {
 
 	if file, ok := lg.GetOutput().(*os.File); ok {
 		if file.Fd() != uintptr(fd) {
-			t.Errorf("expecting fd %q, got %q", fd, file.Fd())
+			t.Errorf("expecting fd %v, got %v", fd, file.Fd())
 		}
 	} else {
 		t.Errorf("Output is not *os.File")
@@ -419,7 +419,7 @@ func TestParseURL_ErrorHandler(t *testing.T) {
 	if len(ec.errs) == 0 {
 		t.Fatal("no error")
 	}
-	t.Logf("got errors: %v", ec.errs)
+	// t.Logf("got errors: %v", ec.errs)
 }
 
 func TestParseURL_Invalid(t *testing.T) {

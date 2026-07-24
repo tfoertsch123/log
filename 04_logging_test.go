@@ -442,7 +442,7 @@ func TestLog(t *testing.T) {
 		defer Close()
 
 		if GetMinLocation() != DEBUG {
-			t.Errorf(`MinLocation should be DEBUG`, GetMinLocation())
+			t.Errorf(`MinLocation should be DEBUG, got %v`, GetMinLocation())
 		}
 
 		var ln int
@@ -542,7 +542,7 @@ func TestLogl(t *testing.T) {
 		for _, s := range levels {
 			ls := strings.ToLower(s)
 			lv, _ := ParseLevel(s)
-			Logl(lv, "%s %d %v", ls, func()interface{}{return 21}, -1)
+			Logl(lv, "%s %d %v", ls, Lazy(func()interface{}{return 21}), -1)
 			if b.String() != "1966-04-28 09:02:05.987654 "+s+" "+ls+" 21 -1\n" {
 				t.Errorf(`got %v`, b.String())
 			}
@@ -553,13 +553,13 @@ func TestLogl(t *testing.T) {
 	func(){
 		NewC(WithLevel(DEBUG), WithTimeFmt("2006-01-02"))
 		defer Close()
-		Logl(INFO, "%s %d %v", "test", func()interface{}{return 21}, -2)
+		Logl(INFO, "%s %d %v", "test", Lazy(func()interface{}{return 21}), -2)
 		if b.String() != "1966-04-28 INFO test 21 -2\n" {
 			t.Errorf(`got %v`, b.String())
 		}
 		b.Reset()
 
-		Logl(DEBUG, "%s %d %v", "test2", func()interface{}{return 21}, -2)
+		Logl(DEBUG, "%s %d %v", "test2", Lazy(func()interface{}{return 21}), -2)
 		re := regexp.MustCompile(
 			`^1966-04-28 DEBUG \(/.+/04_logging_test.go:[0-9]+\) test2 21 -2\n`,
 		)
@@ -649,7 +649,7 @@ func TestNotice(t *testing.T) {
 		defer Close()
 		Notice("notice")
 		Noticef("<%v> <%v>", "notice", 123)
-		Noticel("<%v> <%v>", "notice", func()interface{} {return 124})
+		Noticel("<%v> <%v>", "notice", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 NOTICE notice\n"+
 			    "1966-04-28 NOTICE <notice> <123>\n"+
 			    "1966-04-28 NOTICE <notice> <124>\n")
@@ -660,7 +660,7 @@ func TestNotice(t *testing.T) {
 
 		L().Notice("notice")
 		L().Noticef("<%v> <%v>", "notice", 123)
-		L().Noticel("<%v> <%v>", "notice", func()interface{} {return 124})
+		L().Noticel("<%v> <%v>", "notice", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 NOTICE notice\n"+
 			   "1966-04-28 NOTICE <notice> <123>\n"+
 			   "1966-04-28 NOTICE <notice> <124>\n")
@@ -697,7 +697,7 @@ func TestPanic(t *testing.T) {
 		defer Close()
 		Panic("pan")
 		Panicf("<%v> <%v>", "pan", 123)
-		Panicl("<%v> <%v>", "pan", func()interface{} {return 124})
+		Panicl("<%v> <%v>", "pan", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 PANIC pan\n"+
 			    "1966-04-28 PANIC <pan> <123>\n"+
 			    "1966-04-28 PANIC <pan> <124>\n")
@@ -708,7 +708,7 @@ func TestPanic(t *testing.T) {
 
 		L().Panic("pan")
 		L().Panicf("<%v> <%v>", "pan", 123)
-		L().Panicl("<%v> <%v>", "pan", func()interface{} {return 124})
+		L().Panicl("<%v> <%v>", "pan", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 PANIC pan\n"+
 			   "1966-04-28 PANIC <pan> <123>\n"+
 			   "1966-04-28 PANIC <pan> <124>\n")
@@ -745,7 +745,7 @@ func TestError(t *testing.T) {
 		defer Close()
 		Error("err")
 		Errorf("<%v> <%v>", "err", 123)
-		Errorl("<%v> <%v>", "err", func()interface{} {return 124})
+		Errorl("<%v> <%v>", "err", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 ERROR err\n"+
 			    "1966-04-28 ERROR <err> <123>\n"+
 			    "1966-04-28 ERROR <err> <124>\n")
@@ -756,7 +756,7 @@ func TestError(t *testing.T) {
 
 		L().Error("err")
 		L().Errorf("<%v> <%v>", "err", 123)
-		L().Errorl("<%v> <%v>", "err", func()interface{} {return 124})
+		L().Errorl("<%v> <%v>", "err", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 ERROR err\n"+
 			   "1966-04-28 ERROR <err> <123>\n"+
 			   "1966-04-28 ERROR <err> <124>\n")
@@ -788,7 +788,7 @@ func TestWarn(t *testing.T) {
 		defer Close()
 		Warn("wrn")
 		Warnf("<%v> <%v>", "wrn", 123)
-		Warnl("<%v> <%v>", "wrn", func()interface{} {return 124})
+		Warnl("<%v> <%v>", "wrn", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 WARN wrn\n"+
 			    "1966-04-28 WARN <wrn> <123>\n"+
 			    "1966-04-28 WARN <wrn> <124>\n")
@@ -799,7 +799,7 @@ func TestWarn(t *testing.T) {
 
 		L().Warn("wrn")
 		L().Warnf("<%v> <%v>", "wrn", 123)
-		L().Warnl("<%v> <%v>", "wrn", func()interface{} {return 124})
+		L().Warnl("<%v> <%v>", "wrn", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 WARN wrn\n"+
 			   "1966-04-28 WARN <wrn> <123>\n"+
 			   "1966-04-28 WARN <wrn> <124>\n")
@@ -835,7 +835,7 @@ func TestInfo(t *testing.T) {
 		defer Close()
 		Info("inf")
 		Infof("<%v> <%v>", "inf", 123)
-		Infol("<%v> <%v>", "inf", func()interface{} {return 124})
+		Infol("<%v> <%v>", "inf", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 INFO inf\n"+
 			    "1966-04-28 INFO <inf> <123>\n"+
 			    "1966-04-28 INFO <inf> <124>\n")
@@ -846,7 +846,7 @@ func TestInfo(t *testing.T) {
 
 		L().Info("inf")
 		L().Infof("<%v> <%v>", "inf", 123)
-		L().Infol("<%v> <%v>", "inf", func()interface{} {return 124})
+		L().Infol("<%v> <%v>", "inf", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 INFO inf\n"+
 			   "1966-04-28 INFO <inf> <123>\n"+
 			   "1966-04-28 INFO <inf> <124>\n")
@@ -882,7 +882,7 @@ func TestDebug(t *testing.T) {
 		defer Close()
 		Debug("dbg")
 		Debugf("<%v> <%v>", "dbg", 123)
-		Debugl("<%v> <%v>", "dbg", func()interface{} {return 124})
+		Debugl("<%v> <%v>", "dbg", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 DEBUG dbg\n"+
 			    "1966-04-28 DEBUG <dbg> <123>\n"+
 			    "1966-04-28 DEBUG <dbg> <124>\n")
@@ -893,7 +893,7 @@ func TestDebug(t *testing.T) {
 
 		L().Debug("dbg")
 		L().Debugf("<%v> <%v>", "dbg", 123)
-		L().Debugl("<%v> <%v>", "dbg", func()interface{} {return 124})
+		L().Debugl("<%v> <%v>", "dbg", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 DEBUG dbg\n"+
 			   "1966-04-28 DEBUG <dbg> <123>\n"+
 			   "1966-04-28 DEBUG <dbg> <124>\n")
@@ -929,7 +929,7 @@ func TestDebg2(t *testing.T) {
 		defer Close()
 		Debg2("dbg2")
 		Debg2f("<%v> <%v>", "dbg2", 123)
-		Debg2l("<%v> <%v>", "dbg2", func()interface{} {return 124})
+		Debg2l("<%v> <%v>", "dbg2", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 DEBG2 dbg2\n"+
 			    "1966-04-28 DEBG2 <dbg2> <123>\n"+
 			    "1966-04-28 DEBG2 <dbg2> <124>\n")
@@ -940,7 +940,7 @@ func TestDebg2(t *testing.T) {
 
 		L().Debg2("dbg2")
 		L().Debg2f("<%v> <%v>", "dbg2", 123)
-		L().Debg2l("<%v> <%v>", "dbg2", func()interface{} {return 124})
+		L().Debg2l("<%v> <%v>", "dbg2", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 DEBG2 dbg2\n"+
 			   "1966-04-28 DEBG2 <dbg2> <123>\n"+
 			   "1966-04-28 DEBG2 <dbg2> <124>\n")
@@ -976,7 +976,7 @@ func TestDebg3(t *testing.T) {
 		defer Close()
 		Debg3("dbg3")
 		Debg3f("<%v> <%v>", "dbg3", 123)
-		Debg3l("<%v> <%v>", "dbg3", func()interface{} {return 124})
+		Debg3l("<%v> <%v>", "dbg3", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 DEBG3 dbg3\n"+
 			    "1966-04-28 DEBG3 <dbg3> <123>\n"+
 			    "1966-04-28 DEBG3 <dbg3> <124>\n")
@@ -987,7 +987,7 @@ func TestDebg3(t *testing.T) {
 
 		L().Debg3("dbg3")
 		L().Debg3f("<%v> <%v>", "dbg3", 123)
-		L().Debg3l("<%v> <%v>", "dbg3", func()interface{} {return 124})
+		L().Debg3l("<%v> <%v>", "dbg3", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 DEBG3 dbg3\n"+
 			   "1966-04-28 DEBG3 <dbg3> <123>\n"+
 			   "1966-04-28 DEBG3 <dbg3> <124>\n")
@@ -1023,7 +1023,7 @@ func TestDebg4(t *testing.T) {
 		defer Close()
 		Debg4("dbg4")
 		Debg4f("<%v> <%v>", "dbg4", 123)
-		Debg4l("<%v> <%v>", "dbg4", func()interface{} {return 124})
+		Debg4l("<%v> <%v>", "dbg4", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 DEBG4 dbg4\n"+
 			    "1966-04-28 DEBG4 <dbg4> <123>\n"+
 			    "1966-04-28 DEBG4 <dbg4> <124>\n")
@@ -1034,7 +1034,7 @@ func TestDebg4(t *testing.T) {
 
 		L().Debg4("dbg4")
 		L().Debg4f("<%v> <%v>", "dbg4", 123)
-		L().Debg4l("<%v> <%v>", "dbg4", func()interface{} {return 124})
+		L().Debg4l("<%v> <%v>", "dbg4", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 DEBG4 dbg4\n"+
 			   "1966-04-28 DEBG4 <dbg4> <123>\n"+
 			   "1966-04-28 DEBG4 <dbg4> <124>\n")
@@ -1070,7 +1070,7 @@ func TestDebg5(t *testing.T) {
 		defer Close()
 		Debg5("dbg5")
 		Debg5f("<%v> <%v>", "dbg5", 123)
-		Debg5l("<%v> <%v>", "dbg5", func()interface{} {return 124})
+		Debg5l("<%v> <%v>", "dbg5", Lazy(func()interface{} {return 124}))
 		exp := ("1966-04-28 DEBG5 dbg5\n"+
 			    "1966-04-28 DEBG5 <dbg5> <123>\n"+
 			    "1966-04-28 DEBG5 <dbg5> <124>\n")
@@ -1081,7 +1081,7 @@ func TestDebg5(t *testing.T) {
 
 		L().Debg5("dbg5")
 		L().Debg5f("<%v> <%v>", "dbg5", 123)
-		L().Debg5l("<%v> <%v>", "dbg5", func()interface{} {return 124})
+		L().Debg5l("<%v> <%v>", "dbg5", Lazy(func()interface{} {return 124}))
 		exp = ("1966-04-28 DEBG5 dbg5\n"+
 			   "1966-04-28 DEBG5 <dbg5> <123>\n"+
 			   "1966-04-28 DEBG5 <dbg5> <124>\n")
