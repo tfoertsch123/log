@@ -278,6 +278,9 @@ func (l *Logger) New(_opts ...Opt) *Logger {
 	if opts.out == nil && opts.outcr != nil {
 		out, err := opts.outcr()
 		if err != nil {
+			l.mu.Lock()
+			delete(l.derived, new)
+			l.mu.Unlock()
 			if opts.crehnd != nil {
 				opts.crehnd(err)
 			}
@@ -300,7 +303,7 @@ func (l *Logger) New(_opts ...Opt) *Logger {
 // lg.SetCurrent()
 func NewC(opts ...Opt) *Logger {
 	l := L().New(opts...)
-	l.SetCurrent()
+	if l != nil {l.SetCurrent()}
 	return l
 }
 

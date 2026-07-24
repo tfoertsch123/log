@@ -245,15 +245,18 @@ func (r *Rotate) doRotate() error {
 // This is called automatically by Write when the size threshold is reached,
 // but can also be called manually to force a rotation.
 func (r *Rotate) Rotate() {
-	if r.rmu.TryLock() {
-		go func() {
-			err := r.doRotate()
-			r.rmu.Unlock()
-
-			// errorHnd should not be called while we are holding the lock
-			if err != nil {if r.errorHnd != nil {r.errorHnd(r, err)}}
-		}()
+	if !r.rmu.TryLock() {return}
+	if r.fh == nil {
+		r.rmu.Unlock()
+		return
 	}
+	go func() {
+		err := r.doRotate()
+		r.rmu.Unlock()
+
+		// errorHnd should not be called while we are holding the lock
+		if err != nil {if r.errorHnd != nil {r.errorHnd(r, err)}}
+	}()
 }
 
 // Name returns the name of the main log file.
@@ -302,6 +305,7 @@ func (r *Rotate) Write(p []byte) (int, error) {
 	}()
 
 	f := r.fh
+	if f == nil {return 0, fs.ErrClosed}
 
 	var err error
 	var written, n int = 0, 0
