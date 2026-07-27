@@ -7,4 +7,4 @@ cover: test
 	go tool cover -html=rotate/cover.out -o rotate/coverage.html
 
 doc:
-	godoc -http=127.0.0.1:6060
+	pkgsite -http=127.0.0.1:6060
